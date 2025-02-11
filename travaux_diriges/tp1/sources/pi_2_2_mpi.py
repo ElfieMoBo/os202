@@ -12,7 +12,7 @@ name    = MPI.Get_processor_name()
 
 total_dot = 10000000
 
-rd.seed()
+rd.seed(rank)
 start = time.time()
 def random_dot():
     return[rd.uniform(-1.0,1.0), rd.uniform(-1.0,1.0)]

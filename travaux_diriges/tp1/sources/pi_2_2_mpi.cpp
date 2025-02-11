@@ -9,12 +9,12 @@
 # include <mpi.h>
 
 // Attention , ne marche qu'en C++ 11 ou supérieur :
-double approximate_pi(unsigned long nbSamples) 
+double approximate_pi(unsigned long nbSamples, int rank) 
 {
     typedef std::chrono::high_resolution_clock myclock;
     myclock::time_point beginning = myclock::now();
     myclock::duration d = beginning.time_since_epoch();
-    unsigned seed = d.count();
+    unsigned seed = d.count() + rank;
     std::default_random_engine generator(seed);
     std::uniform_real_distribution <double> distribution ( -1.0 ,1.0);
     unsigned long nbDarts = 0;
@@ -69,7 +69,7 @@ int main( int nargs, char* argv[] )
         total_dot_rank += 1;
     }
     // Calculate pi for total_dot_rank samples :
-    double local_pi = approximate_pi(total_dot_rank);
+    double local_pi = approximate_pi(total_dot_rank, rank);
     double global_pi = 0.0;
     MPI_Allreduce(&local_pi, &global_pi, 1, MPI_DOUBLE, MPI_SUM, globComm);
     // global_pi is nbp*pi
