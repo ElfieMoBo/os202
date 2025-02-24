@@ -123,7 +123,7 @@ if __name__ == '__main__':
         "beacon"  : ((6,6), [(1,3),(1,4),(2,3),(2,4),(3,1),(3,2),(4,1),(4,2)]),
         "boat" : ((5,5),[(1,1),(1,2),(2,1),(2,3),(3,2)]),
         "glider": ((100,90),[(1,1),(2,2),(2,3),(3,1),(3,2)]),
-        "glider_gun": ((400,400),[(51,76),(52,74),(52,76),(53,64),(53,65),(53,72),(53,73),(53,86),(53,87),(54,63),(54,67),(54,72),(54,73),(54,86),(54,87),(55,52),(55,53),(55,62),(55,68),(55,72),(55,73),(56,52),(56,53),(56,62),(56,66),(56,68),(56,69),(56,74),(56,76),(57,62),(57,68),(57,76),(58,63),(58,67),(59,64),(59,65)]),
+        "glider_gun": ((300,300),[(51,76),(52,74),(52,76),(53,64),(53,65),(53,72),(53,73),(53,86),(53,87),(54,63),(54,67),(54,72),(54,73),(54,86),(54,87),(55,52),(55,53),(55,62),(55,68),(55,72),(55,73),(56,52),(56,53),(56,62),(56,66),(56,68),(56,69),(56,74),(56,76),(57,62),(57,68),(57,76),(58,63),(58,67),(59,64),(59,65)]),
         "space_ship": ((25,25),[(11,13),(11,14),(12,11),(12,12),(12,14),(12,15),(13,11),(13,12),(13,13),(13,14),(14,12),(14,13)]),
         "die_hard" : ((100,100), [(51,57),(52,51),(52,52),(53,52),(53,56),(53,57),(53,58)]),
         "pulsar": ((17,17),[(2,4),(2,5),(2,6),(7,4),(7,5),(7,6),(9,4),(9,5),(9,6),(14,4),(14,5),(14,6),(2,10),(2,11),(2,12),(7,10),(7,11),(7,12),(9,10),(9,11),(9,12),(14,10),(14,11),(14,12),(4,2),(5,2),(6,2),(4,7),(5,7),(6,7),(4,9),(5,9),(6,9),(4,14),(5,14),(6,14),(10,2),(11,2),(12,2),(10,7),(11,7),(12,7),(10,9),(11,9),(12,9),(10,14),(11,14),(12,14)]),
@@ -256,21 +256,20 @@ if __name__ == '__main__':
         end = time.time()
         time_total = end - begin
     
-    elif(parallelization=="double"): # Problem: process 1 and 2 don't receive data from 0 at the same time (infinite waiting)
+    elif(parallelization=="double"): # Problem: cells are not evolving throught iterations (windows is white)
         computers = globCom.group.Excl([0])
         computeCom = globCom.Create_group(computers)
         begin = time.time()
         if(rank==0): #Display
             while loop:
                 t2 = time.time()
-                for computing_rank in range(1,nbp):
-                    print(f"{rank} is ready to {computing_rank}")
-                    globCom.send(True, dest=computing_rank) # Alerting drawing is ready
-                grid = globCom.recv(source = 1)
-                if(grid==True):
+                globCom.send(True, dest=1) # Alerting drawing is ready
+                appli.grid.cells = globCom.recv(source = 1)
+                # print(f"{appli.grid.cells[(appli.grid.cells!=0)]} for {rank}")
+                if(type(appli.grid.cells) is bool):
                     loop = False
                 else:
-                    appli.newgrid(grid)
+                    # appli.newgrid(grid)
                     appli.draw()
                 t3 = time.time()
                 for event in pg.event.get():
@@ -283,37 +282,49 @@ if __name__ == '__main__':
                 k += 1
                 time_drawing += t3-t2
         else:
-            cells_loc = np.empty(((int)(resx/(nbp-1)), resy), dtype='uint8')
+            grid_glob = None
+            if(computeCom.rank==0):
+                grid_glob = np.zeros(init_pattern[0], dtype=np.uint8)
+            cells_loc = np.empty(((int)(resx/(nbp-1)+2), resy), dtype='uint8')
+            # print(f"{grid.cells[(grid.cells!=0)]}")
             computeCom.Scatter(grid.cells, [cells_loc, MPI.INT],root=1)
+            # print(f"{cells_loc[(cells_loc!=0)]} for {rank}")
+            dim = ((int)(resx/(nbp-1))+2, resy)
+            partial_grid = Grille(dim, cells_loc)
+
+            next = computeCom.rank + 1
+            if(next==computeCom.size):
+                next = 0
+            previous = computeCom.rank - 1
+            if(previous==-1):
+                previous = computeCom.size-1
+
             while loop:
                 t1 = time.time()
-                # print(grid.cells.shape)
-                # print(type(grid.cells[0,0]))
-                # print(type(cells_loc[0,0]))
-                first_line = cells_loc[0,:]
-                last_line = cells_loc[-1,:]
-                next = rank + 1
-                if(next==nbp):
-                    next = 1
-                previous = rank - 1
-                if(previous==0):
-                    previous = nbp-1
-                computeCom.send(first_line, dest=previous-1)
-                computeCom.send(last_line, dest=next-1)
-                cells_loc += (computeCom.recv(source=next-1))
-                cells_loc += (computeCom.recv(source=previous-1))
-                dim = ((int)(resx/(nbp-1))+2, resy)
-                partial_grid = Grille(dim, cells_loc)
+                # Updating ghost cells
+                first_line = cells_loc[1,:]
+                last_line = cells_loc[-2,:]
+                computeCom.send(first_line, dest=previous)
+                computeCom.send(last_line, dest=next)
+                cells_loc[0,:] = (computeCom.recv(source=next))
+                cells_loc[-1,:] = (computeCom.recv(source=previous))
+                # print(f"{cells_loc[(cells_loc!=0)]} for {rank}")
+                partial_grid.cells = cells_loc
                 diff = partial_grid.compute_next_iteration()
-                ready = globCom.iprobe(source=0)
-                print(f"{rank} has {ready} when {k}")
-                if(ready):
-                    print(f"{rank} sending: {k}") 
-                    globCom.recv(source=0)
-                    cells = computeCom.gather(partial_grid.cells)
-                    grid = Grille((resx,resy), cells)
-                    if(rank==1):
-                        globCom.send(grid, dest=0)
+                cells_loc = partial_grid.cells
+                # print(f"{partial_grid.cells[(partial_grid.cells!=0)]} for {rank}")
+                grid_glob_temp = np.array(computeCom.gather(partial_grid.cells[1:-1,:], root=0))
+                # print(f"{grid_glob_temp[(grid_glob_temp!=0)]} for {rank}")
+                if(computeCom.rank==0):
+                    # print(grid_glob_temp.shape)
+                    grid_glob = np.concatenate(grid_glob_temp, axis=0)
+                    # print(f"{grid_glob[(grid_glob!=0)]} for {rank}")
+                    # print(grid_glob.shape)
+                    ready = globCom.iprobe(source=0)
+                    if(ready):
+                        globCom.recv(source=0)
+                        globCom.send(grid_glob, dest=0)
+                        # print(f"{grid_glob[(grid_glob!=0)]} for {rank}")
                 t2 = time.time()
                 for event in pg.event.get():
                     if event.type == pg.QUIT:

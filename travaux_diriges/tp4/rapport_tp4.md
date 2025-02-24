@@ -29,11 +29,11 @@ Sur cet ordinateur, on peut donc repérer que l'ordinateur possède 4 cœurs phy
 
 Cet ordinateur possède aussi une fréquence théorique de calcul de 2.80GHz.
 
-## 2 - Etude du jeu de la vie
+## 2 - Étude du jeu de la vie
 
-Le jeu de la vie est un automate cellulaire se basant sur une grille 2D infinie de cellules qui peuvent prendre deux états : vivante ou morte. Le calcul de ces états suit un algorithme déjà implémenté dans le cadre de cat exercice. L'objectif de ce TD est de paralléliser le calcul et l'affichage de la grille représentant l'automate cellulaire.
+Le jeu de la vie est un automate cellulaire se basant sur une grille 2D infinie de cellules qui peuvent prendre deux états : vivante ou morte. Le calcul de ces états suit un algorithme déjà implémenté dans le cadre de cet exercice. L'objectif de ce TD est de paralléliser le calcul et l'affichage de la grille représentant l'automate cellulaire.
 
-Etant donné que le calcul des cellules est en théorie infini, un quota de `n=10000` itérations à été fixé avant de terminer les calculs et ainsi pouvoir comparer les temps des différentes parallélisations pour un cas donné. Pour une meilleure comparaison, plusieurs tailles de fenêtre ont aussi été testées : (200,200), (300,300) et (400,400) sur la même initialisation de départ.
+Étant donné que le calcul des cellules est en théorie infini, un quota de `n=10000` itérations à été fixé avant de terminer les calculs et ainsi pouvoir comparer les temps des différentes parallélisations pour un cas donné. Pour une meilleure comparaison, plusieurs tailles de fenêtre ont aussi été testées : (200,200), (300,300) et (400,400) sur la même initialisation de départ.
 
 ### A - Recherche de la partie lente
 
@@ -86,3 +86,16 @@ Cette méthode peut encore être améliorée par une **troisième parallélisati
 * Découpage de la grille de manière cartésienne (avec utilisation de cellules fantômes)
 * Regroupement des informations sur le processus de calcul commun (ici `rank 1`) 
 * Envoie de l'état courant si le processus affichage est libre
+
+
+Les temps sont affiché dans le tableau ci-dessous. On remarque cependant que les temps sont équivalents ou plus élevés. Cela est peut-être dû à la gestion des envois de données dans le code qui n'est pas optimal.
+
+taille grille | temps calcul moyen (s) | temps affichage moyen (s) | temps global (s)
+:------------:|:----------------------:|:-------------------------:|:------------------:
+(200,200)     |  0.00045419321002012345 |   0.001368329665574238   | 4.637352228164673
+(300,300)     |  0.00041220884491903595 |   0.0020574382448878617  | 4.2000579833984375
+(400,400)     |  0.0005413174760328533  |   0.0037673191725180774   | 5.497316598892212
+
+Les courbes de speed up suivantes permettent d'avoir une vue globale de l'effet de la parallélisation sur le calcul et l'affichage de cet automate : 
+
+<img src="images/courbes.png" alt="Courbes de speed-up" width="400"/>
