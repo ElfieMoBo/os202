@@ -14,7 +14,7 @@ using namespace std::chrono_literals;
 
 struct ParamsType
 {
-    double length{1.};
+    double length{10.};
     unsigned discretization{200u};
     std::array<double,2> wind{0.,0.};
     Model::LexicoIndices start{10u,10u};
@@ -248,7 +248,7 @@ int main( int nargs, char* args[] )
 
         if (SDL_PollEvent(&event) && event.type == SDL_QUIT)
             break;
-        std::this_thread::sleep_for(1s);
+        // std::this_thread::sleep_for(0.1s);
         current_step ++;
     }
     std::cout << "Mean time displaying: " << time_display.count()/current_step << std::endl;

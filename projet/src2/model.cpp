@@ -2,7 +2,6 @@
 #include <cmath>
 #include <iostream>
 #include "model.hpp"
-#include "omp.h"
 
 
 namespace
@@ -76,125 +75,91 @@ Model::Model( double t_length, unsigned t_discretization, std::array<double,2> t
 bool 
 Model::update()
 {
-    /* Parallelization with OpenMP */
-    // Getting keys in a table :
-    auto next_front = m_fire_front; // shared
-    std::size_t keys[m_fire_front.size()];
-    std::unordered_map<std::size_t, std::uint8_t>::iterator current;
-    int i = 0;
-    for (current = m_fire_front.begin (); current != m_fire_front.end(); current++)
+    auto next_front = m_fire_front;
+    for (auto f : m_fire_front)
     {
-        keys[i] = current->first;
-        i++;
-    }
-
-    #pragma omp parallel for
-    for (long unsigned int i=0; i<m_fire_front.size(); i++)
-    {
-        std::size_t key = keys[i];
-        std::uint8_t value = m_fire_front.find(key)->second;
         // Récupération de la coordonnée lexicographique de la case en feu :
-        LexicoIndices coord = get_lexicographic_from_index(key);
+        LexicoIndices coord = get_lexicographic_from_index(f.first);
         // Et de la puissance du foyer
-        double power = log_factor(value);
+        double        power = log_factor(f.second);
 
 
         // On va tester les cases voisines pour contamination par le feu :
         if (coord.row < m_geometry-1)
         {
-            double tirage = pseudo_random(key+m_time_step, m_time_step);
-            double green_power = m_vegetation_map[key+m_geometry];
+            double tirage      = pseudo_random( f.first+m_time_step, m_time_step);
+            double green_power = m_vegetation_map[f.first+m_geometry];
             double correction  = power*log_factor(green_power);
             if (tirage < alphaSouthNorth*p1*correction)
             {
-                #pragma omp atomic write
-                m_fire_map[key + m_geometry] = 255.;
-                next_front[key + m_geometry] = 255.;
+                m_fire_map[f.first + m_geometry]   = 255.;
+                next_front[f.first + m_geometry] = 255.;
             }
         }
 
         if (coord.row > 0)
         {
-            double tirage = pseudo_random( key*13427+m_time_step, m_time_step);
-            double green_power = m_vegetation_map[key - m_geometry];
+            double tirage      = pseudo_random( f.first*13427+m_time_step, m_time_step);
+            double green_power = m_vegetation_map[f.first - m_geometry];
             double correction  = power*log_factor(green_power);
             if (tirage < alphaNorthSouth*p1*correction)
             {
-                #pragma omp atomic write
-                m_fire_map[key - m_geometry] = 255.;
-                next_front[key - m_geometry] = 255.;
+                m_fire_map[f.first - m_geometry] = 255.;
+                next_front[f.first - m_geometry] = 255.;
             }
         }
 
         if (coord.column < m_geometry-1)
         {
-            double tirage = pseudo_random( key*13427*13427+m_time_step, m_time_step);
-            double green_power = m_vegetation_map[key+1];
+            double tirage      = pseudo_random( f.first*13427*13427+m_time_step, m_time_step);
+            double green_power = m_vegetation_map[f.first+1];
             double correction  = power*log_factor(green_power);
             if (tirage < alphaEastWest*p1*correction)
             {
-                #pragma omp atomic write
-                m_fire_map[key + 1] = 255.;
-                next_front[key + 1] = 255.;
+                m_fire_map[f.first + 1] = 255.;
+                next_front[f.first + 1] = 255.;
             }
         }
 
         if (coord.column > 0)
         {
-            double tirage      = pseudo_random( key*13427*13427*13427+m_time_step, m_time_step);
-            double green_power = m_vegetation_map[key - 1];
+            double tirage      = pseudo_random( f.first*13427*13427*13427+m_time_step, m_time_step);
+            double green_power = m_vegetation_map[f.first - 1];
             double correction  = power*log_factor(green_power);
             if (tirage < alphaWestEast*p1*correction)
             {
-                #pragma omp atomic write
-                m_fire_map[key - 1] = 255.;
-                next_front[key - 1] = 255.;
+                m_fire_map[f.first - 1] = 255.;
+                next_front[f.first - 1] = 255.;
             }
         }
         // Si le feu est à son max,
-        if (value == 255)
+        if (f.second == 255)
         {   // On regarde si il commence à faiblir pour s'éteindre au bout d'un moment :
-            double tirage = pseudo_random( key * 52513 + m_time_step, m_time_step);
+            double tirage = pseudo_random( f.first * 52513 + m_time_step, m_time_step);
             if (tirage < p2)
-            {     
-                #pragma omp atomic
-                m_fire_map[key] >>= 1;
-                next_front[key] >>= 1;
+            {
+                m_fire_map[f.first] >>= 1;
+                next_front[f.first] >>= 1;
             }
         }
         else
         {
-            // Foyer en train de s'éteindre
-            #pragma omp atomic
-            m_fire_map[key] >>= 1;
-            next_front[key] >>= 1;
-            if (next_front[key] == 0)
+            // Foyer en train de s'éteindre.
+            m_fire_map[f.first] >>= 1;
+            next_front[f.first] >>= 1;
+            if (next_front[f.first] == 0)
             {
-                next_front.erase(key);
+                next_front.erase(f.first);
             }
         }
 
-    }
-
+    }    
     // A chaque itération, la végétation à l'endroit d'un foyer diminue
     m_fire_front = next_front;
-
-    std::size_t new_keys[m_fire_front.size()];
-    i = 0;
-    for (current = m_fire_front.begin (); current != m_fire_front.end(); current++)
+    for (auto f : m_fire_front)
     {
-        new_keys[i] = current->first;
-        i++;
-    }
-    
-    // #pragma omp parallel for
-    for (long unsigned int i=0; i<m_fire_front.size(); i++)
-    {
-        std::size_t key = new_keys[i];
-        if(m_vegetation_map[key] > 0){
-            #pragma omp atomic
-            m_vegetation_map[key] -= 1;
-        }
+        if (m_vegetation_map[f.first] > 0)
+            m_vegetation_map[f.first] -= 1;
     }
     m_time_step += 1;
     return !m_fire_front.empty();
