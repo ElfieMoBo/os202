@@ -201,7 +201,7 @@ int main( int nargs, char* args[] )
         return 1;
     }
     auto params = parse_arguments(nargs-1, &args[1]);
-    display_params(params);
+    // display_params(params);
     if (!check_params(params)) return EXIT_FAILURE;
 
     auto displayer = Displayer::init_instance(params.discretization, params.discretization);
@@ -217,9 +217,14 @@ int main( int nargs, char* args[] )
     auto time_display_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> time_display = time_display_begin - time_display_begin;
 
+    auto time_global_begin = std::chrono::high_resolution_clock::now();
+    auto time_global_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> time = time_global_begin - time_global_begin;
+
     int current_step = 0;
     int step_max = 1000;
 
+    time_global_begin = std::chrono::high_resolution_clock::now();
     while (current_step < step_max)
     {
         time_step_begin = std::chrono::high_resolution_clock::now();
@@ -229,7 +234,7 @@ int main( int nargs, char* args[] )
         time_step += time_step_end - time_step_begin; 
 
         if ((simu.time_step() & 31) == 0){
-            std::cout << "Time step " << simu.time_step() << "\n===============" << std::endl;
+            // std::cout << "Time step " << simu.time_step() << "\n===============" << std::endl;
             // file << "step: " << simu.time_step() << std::endl;
             file << "--VEGETAL--" << std::endl;
             for(int i=0; i<200; i++)
@@ -251,7 +256,10 @@ int main( int nargs, char* args[] )
         // std::this_thread::sleep_for(0.1s);
         current_step ++;
     }
+    time_global_end = std::chrono::high_resolution_clock::now();
+    time = time_global_end - time_global_begin;
     std::cout << "Mean time displaying: " << time_display.count()/current_step << std::endl;
     std::cout << "Mean time step: " << time_step.count()/current_step << std::endl;
+    std::cout << "Global time: " << time.count() << std::endl;
     return EXIT_SUCCESS;
 }
