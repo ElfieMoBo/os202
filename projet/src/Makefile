@@ -19,6 +19,7 @@ all: $(ALL)
 
 clean:
 	@rm -fr *.o *.exe *~
+	rm -f *.txt
 
 .cpp.o:
 	$(CXX) $(CXXFLAGS2) -c $^ -o $@	
