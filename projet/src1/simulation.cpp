@@ -6,6 +6,8 @@
 #include <thread>
 #include <chrono>
 
+#include <omp.h>
+
 #include "model.hpp"
 #include "display.hpp"
 
@@ -258,6 +260,7 @@ int main( int nargs, char* args[] )
     }
     time_global_end = std::chrono::high_resolution_clock::now();
     time = time_global_end - time_global_begin;
+    std::cout << "Simulation with " << omp_get_num_threads() << " threads" << std::endl;
     std::cout << "Mean time displaying: " << time_display.count()/current_step << std::endl;
     std::cout << "Mean time step: " << time_step.count()/current_step << std::endl;
     std::cout << "Global time: " << time.count() << std::endl;

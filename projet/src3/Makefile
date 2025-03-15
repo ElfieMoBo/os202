@@ -2,30 +2,31 @@ include Make_linux.inc
 #include Make_msys2.inc
 #include Make_osx.inc
 
-CXXFLAGS = -std=c++17
+CXX = mpic++ -fopenmp
+
+CXXFLAGS = -std=c++17 -Wall
 ifdef DEBUG
-CXXFLAGS += -g -O0 -Wall -fbounds-check -pedantic -D_GLIBCXX_DEBUG
-CXXFLAGS2 = CXXFLAGS
+CXXFLAGS += -g -O0 -fbounds-check -pedantic -D_GLIBCXX_DEBUG -fsanitize=address
 else
-CXXFLAGS2 = ${CXXFLAGS} -O2 -march=native -Wall 
-CXXFLAGS += -O3 -march=native -Wall
+CXXFLAGS += -O3 -march=native
 endif
 
-ALL= simulation.exe 
+
+ALL = simulation.exe 
 
 default:	help
 
 all: $(ALL)
 
 clean:
-	@rm -fr *.o *.exe *.out *~
-	rm -f simulation.txt
+	@rm -fr *.o *.exe *~ *.d
 
 .cpp.o:
-	$(CXX) $(CXXFLAGS2) -c $^ -o $@	
+	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
 
-simulation.exe : display.o display.hpp model.o model.hpp simulation.o
-	$(CXX) $(CXXFLAGS2) $^ -o $@ $(LIB)	
+# Assurez-vous de lier les bibliothèques MPI ici.
+simulation.exe : display.o model.o simulation.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIB) -lmpi  # Liez la bibliothèque MPI ici.
 
 help:
 	@echo "Available targets : "
@@ -37,3 +38,5 @@ help:
 
 %.html: %.md
 	pandoc -s --toc $< --css=./github-pandoc.css --metadata pagetitle="OS202 - TD1" -o $@
+
+-include *.d

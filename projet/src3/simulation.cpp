@@ -5,6 +5,9 @@
 #include <thread>
 #include <chrono>
 
+#include <omp.h>
+#include <mpi.h>
+
 #include "model.hpp"
 #include "display.hpp"
 
@@ -13,10 +16,11 @@ using namespace std::chrono_literals;
 
 struct ParamsType
 {
-    double length{1.};
+    double length{10.};
     unsigned discretization{200u};
     std::array<double,2> wind{0.,0.};
     Model::LexicoIndices start{10u,10u};
+    int nb_iterations{1000}; //Ajout du nombre d'itérations pour la simulation
 };
 
 void analyze_arg( int nargs, char* args[], ParamsType& params )
@@ -191,32 +195,128 @@ void display_params(ParamsType const& params)
               << "\tVecteur vitesse : [" << params.wind[0] << ", " << params.wind[1] << "]" << std::endl
               << "\tPosition initiale du foyer (col, ligne) : " << params.start.column << ", " << params.start.row << std::endl;
 }
+/*
+int main(int argc, char* argv[]) {
+    MPI_Init(&argc, &argv);  // Initialisation de MPI
 
-int main( int nargs, char* args[] )
-{
-    auto params = parse_arguments(nargs-1, &args[1]);
-    display_params(params);
-    if (!check_params(params)) return EXIT_FAILURE;
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    auto displayer = Displayer::init_instance(params.discretization, params.discretization);
-    auto simu = Model(params.length, params.discretization, params.wind, params.start);
-    SDL_Event event;
-    auto time_display_begin = std::chrono::high_resolution_clock::now();
-    auto time_display_end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> time_display = time_display_end - time_display_begin;
-    while (simu.update())
-    {
-        if ((simu.time_step() & 31) == 0){
-            std::cout << "Time step " << simu.time_step() << "\n===============" << std::endl;
-            std::cout << "Time displaying: " << time_display.count() << std::endl;
-        }
-        time_display_begin = std::chrono::high_resolution_clock::now();
-        displayer->update(simu.vegetal_map(), simu.fire_map());
-        time_display_end = std::chrono::high_resolution_clock::now();
-        time_display = time_display_end - time_display_begin;
-        if (SDL_PollEvent(&event) && event.type == SDL_QUIT)
-            break;
-        std::this_thread::sleep_for(0.1s);
+    ParamsType params = parse_arguments(argc - 1, &argv[1]);
+    if (!check_params(params)) {
+        MPI_Finalize();
+        return EXIT_FAILURE;
     }
-    return EXIT_SUCCESS;
+
+    Model model(params.length, params.discretization, params.wind, params.start);
+    std::vector<std::uint8_t> fire_map(params.discretization * params.discretization);
+    std::vector<std::uint8_t> vegetation_map(params.discretization * params.discretization);
+
+    auto start_time = MPI_Wtime(); // Début mesure temps
+
+    if (rank == 0) {  
+        // Processus 0 : affichage
+        auto displayer = Displayer::init_instance(params.discretization, params.discretization);
+        while (true) {
+            MPI_Recv(fire_map.data(), fire_map.size(), MPI_UINT8_T, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(vegetation_map.data(), vegetation_map.size(), MPI_UINT8_T, 1, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            displayer->update(vegetation_map, fire_map);
+
+            // Condition d'arrêt pour le processus d'affichage
+            int stop_signal;
+            MPI_Recv(&stop_signal, 1, MPI_INT, 1, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            if (stop_signal == 1) break;
+        }
+    } else {  
+        // Processus > 0 : calcul
+        while (model.update()) {
+            fire_map = model.fire_map();
+            vegetation_map = model.vegetal_map();
+            MPI_Send(fire_map.data(), fire_map.size(), MPI_UINT8_T, 0, 0, MPI_COMM_WORLD);
+            MPI_Send(vegetation_map.data(), vegetation_map.size(), MPI_UINT8_T, 0, 1, MPI_COMM_WORLD);
+        }
+
+        // Envoyer un signal d'arrêt au processus d'affichage
+        int stop_signal = 1;
+        MPI_Send(&stop_signal, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
+    }
+
+    auto end_time = MPI_Wtime(); // Fin mesure temps
+    if (rank == 0) {
+        std::cout << "Temps moyen par itération : " << (end_time - start_time) / params.discretization << " s" << std::endl;
+    }
+
+    MPI_Finalize();
+    return 0;
+}*/
+
+int main(int argc, char* argv[]) {
+    //display_params(parse_arguments(argc - 1, &argv[1]));
+    display_params(parse_arguments(0, &argv[1]));
+    MPI_Init(&argc, &argv);
+    int ompThreads = 1;
+    if(argc > 0){
+        ompThreads = atoi(argv[1]);
+    }
+
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    ParamsType params = parse_arguments(argc - 1, &argv[1]);
+    if (!check_params(params)) {
+        MPI_Finalize();
+        return EXIT_FAILURE;
+    }
+    
+    Model model(params.length, params.discretization, params.wind, params.start);
+    std::vector<std::uint8_t> fire_map(params.discretization * params.discretization);
+    std::vector<std::uint8_t> vegetation_map(params.discretization * params.discretization);
+
+    auto start_time = MPI_Wtime();
+
+    if (rank == 0) {
+        // Processus d'affichage
+        auto displayer = Displayer::init_instance(params.discretization, params.discretization);
+        for (int iter = 0; iter < params.nb_iterations; ++iter) {
+            // Attendre les données des processus de calcul
+            MPI_Recv(fire_map.data(), fire_map.size(), MPI_UINT8_T, 1, iter, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(vegetation_map.data(), vegetation_map.size(), MPI_UINT8_T, 1, iter+params.nb_iterations, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            
+            // Mettre à jour l'affichage
+            displayer->update(vegetation_map, fire_map);
+            
+            // Synchronisation avec les processus de calcul
+            MPI_Send(&iter, 1, MPI_INT, 1, iter, MPI_COMM_WORLD);
+        }
+    } else {
+        
+        // Processus de calcul
+        for (int iter = 0; iter < params.nb_iterations; ++iter) {
+            // Effectuer une itération de calcul
+            model.update(ompThreads);
+            
+            // Envoyer les résultats au processus d'affichage
+            fire_map = model.fire_map();
+            vegetation_map = model.vegetal_map();
+            MPI_Send(fire_map.data(), fire_map.size(), MPI_UINT8_T, 0, iter, MPI_COMM_WORLD);
+            MPI_Send(vegetation_map.data(), vegetation_map.size(), MPI_UINT8_T, 0, iter+params.nb_iterations, MPI_COMM_WORLD);
+            
+            // Attendre la confirmation de l'affichage avant de continuer
+            int received_iter;
+            MPI_Recv(&received_iter, 1, MPI_INT, 0, iter, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+    }
+
+    auto end_time = MPI_Wtime();
+    double total_time = end_time - start_time;
+    if (rank == 0) {
+        std::cout << "Simulation avec " << ompThreads << " threads omp et " << size << " mpi" << std::endl;
+        std::cout << "Temps total : " << total_time << " s" << std::endl;
+        std::cout << "Temps moyen par itération : " << (total_time) / params.nb_iterations << " s" << std::endl;
+    }
+
+    MPI_Finalize();
+    return 0;
 }

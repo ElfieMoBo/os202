@@ -95,7 +95,7 @@ Model::update()
     int erased_i = 0;
     
 
-    /* Parallelization failed: problem with writing simultenaously + not the same simulation because it doesn't write with the same order */
+    /* Parallelization (failed): not the same simulation because it doesn't write with the same order */
     #pragma omp parallel for
     for (long unsigned int i=0; i<m_fire_front.size(); i++)
     {
